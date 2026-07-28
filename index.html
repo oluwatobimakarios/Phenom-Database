@@ -308,6 +308,17 @@ const ICONS = {
   reports:'<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17V3M3 17h14"/><rect x="6" y="10" width="2.6" height="5"/><rect x="10.7" y="6.5" width="2.6" height="8.5"/><rect x="15.4" y="12.5" width="0" height="2.5"/></svg>'
 };
 
+/* ======================= SUPABASE CONFIG =======================
+   Fill these in with your own project's values (Supabase dashboard →
+   Project Settings → API → Project URL / anon public key). The anon
+   key is fine to ship in client-side code — the RLS policy on the
+   table is what actually controls what it's allowed to do. See the
+   SQL + policy setup notes provided alongside this file. */
+const SUPABASE_URL = 'https://kxgqahkcvjojtcwrcmey.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_1jcMrmqH-LEM4II-bNT9-A_YNARq_Is';
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const KV_TABLE = 'app_kv';
+
 /* ======================= DATA LAYER ======================= */
 const DB = { members:[], attendance:[], finance:[], settings:{}, templates:[], session:{} };
 let CURRENT_VIEW = 'dashboard';
@@ -345,13 +356,22 @@ function defaultTemplates(){
 
 async function storeGet(key){
   try{
-    const r = await window.storage.get(key, true);
-    return r ? JSON.parse(r.value) : null;
-  }catch(e){ return null; }
+    const { data, error } = await supabaseClient
+      .from(KV_TABLE)
+      .select('value')
+      .eq('key', key)
+      .maybeSingle();
+    if(error) throw error;
+    return data ? data.value : null;
+  }catch(e){ console.error('load failed',key,e); return null; }
 }
 async function storeSet(key,val){
-  try{ await window.storage.set(key, JSON.stringify(val), true); }
-  catch(e){ console.error('save failed',key,e); showToast('Save failed — check connection'); }
+  try{
+    const { error } = await supabaseClient
+      .from(KV_TABLE)
+      .upsert({ key, value: val, updated_at: new Date().toISOString() }, { onConflict:'key' });
+    if(error) throw error;
+  }catch(e){ console.error('save failed',key,e); showToast('Save failed — check connection'); }
 }
 
 /* ===== Service schedule (Africa/Lagos time) — self check-in auto-opens during these windows ===== */
